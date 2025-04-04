@@ -7,6 +7,7 @@ import jwt from "jsonwebtoken"
 import * as crypto from 'crypto'
 import sendEmail from '../utils/email'
 const FRONTEND_URL = process.env.FRONTEND_URL
+const isProduction = process.env.IS_PRODUCTION === "true"
 
 const prisma = new RemoteDB()
 
@@ -70,9 +71,9 @@ const login = catchAsync(
 
         res.cookie("auth_token", token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
+            secure: isProduction,
             maxAge: 86400000,
-            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax"
+            sameSite: isProduction ? "none" : "lax"
         })
 
         res.status(200).json({
@@ -88,8 +89,8 @@ const logout = catchAsync(
         res.cookie("auth_token", "", {
             expires: new Date(0),
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax"
+            secure: isProduction,
+            sameSite: isProduction ? "none" : "lax"
         })
 
         res.status(200).json({
