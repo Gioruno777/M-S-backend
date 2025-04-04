@@ -7,14 +7,13 @@
     "build": "npm install && npx tsc",
     "test": "jest",
     "start": "node dist/index.js",
-    "postinstall": "prisma generate --schema=prisma/remote/schema.prisma"
+    "postinstall": "npx prisma generate --schema=prisma/remote/schema.prisma"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "-": "^0.0.1",
     "@types/nodemailer": "^6.4.17",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.2",
@@ -29,7 +28,6 @@
     "mongoose": "^8.10.1",
     "multer": "^1.4.5-lts.2",
     "nodemailer": "^6.10.0",
-    "save-dev": "^0.0.1-security",
     "stripe": "^17.7.0"
   },
   "devDependencies": {
