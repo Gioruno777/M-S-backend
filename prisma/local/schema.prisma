@@ -1,0 +1,100 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+// npx prisma generate --schema=prisma/local/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../generated/local"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("LOCAL_DATABASE_URL")
+}
+
+model User {
+  id                   String    @id @default(uuid())
+  email                String    @unique
+  password             String
+  photo                String    @default("https://res.cloudinary.com/ddamsnyat/image/upload/v1742547264/photo/user_e0623492-35d0-4b92-89f8-9c0d03ed11bf.png")
+  userName             String
+  balance              Int       @default(0)
+  createdAt            DateTime  @default(now())
+  passwordResetToken   String?   @unique
+  passwordResetExpires DateTime?
+  passwordUpdatedAt    DateTime  @default(now())
+
+  cart         Cart?
+  transactions Transaction[]
+}
+
+model Cart {
+  id        String     @id @default(uuid())
+  user      User       @relation(fields: [userId], references: [id])
+  userId    String     @unique
+  items     CartItem[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model CartItem {
+  id     String @id @default(uuid())
+  cart   Cart   @relation(fields: [cartId], references: [id])
+  cartId String
+
+  productId String
+  quantity  Int
+  price     Int
+  name      String
+  imageUrl  String
+
+  @@unique([cartId, productId], name: "cartId_productId")
+}
+
+model Transaction {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  amount          Int
+  previousBalance Int?
+  note            String            @default("")
+  record          String
+  method          PaymentMethod
+  type            TransactionType
+  status          TransactionStatus
+  createdAt       DateTime          @default(now())
+  items           TransactionItem[]
+}
+
+model TransactionItem {
+  id            String      @id @default(uuid())
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
+  transactionId String
+
+  productId String
+  name      String
+  imageUrl  String
+  quantity  Int
+  price     Int
+}
+
+enum PaymentMethod {
+  MEMBER_CARD
+  STRIPE
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum TransactionType {
+  TOP_UP
+  PURCHASE
+}
