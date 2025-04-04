@@ -14,6 +14,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@prisma/client": "^6.5.0",
     "@types/nodemailer": "^6.4.17",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.2",
