@@ -50,7 +50,7 @@ const updatePassword = catchAsync(
 
         const isMatch = await bcrypt.compare(currentPassword, user.password)
         if (!isMatch) {
-            throw new AppError("密碼驗證失敗", 400)
+            throw new AppError("當前密碼錯誤", 400)
         }
 
         const hashedPassword = await bcrypt.hash(newPassword, 10)
@@ -88,7 +88,7 @@ const updateUserinfo = catchAsync(
         }
 
         if (req.file) {
-            updateData.photoUrl = await uploadImage(req.userId, req.file)
+            updateData.photo = await uploadImage(req.userId, req.file)
         }
 
         if (Object.keys(updateData).length !== 0) {

@@ -70,13 +70,6 @@ const login = catchAsync(
             }
         )
 
-        res.cookie("auth_token", token, {
-            httpOnly: true,
-            secure: isProduction,
-            maxAge: 86400000,
-            sameSite: isProduction ? "none" : "lax"
-        })
-
         res.status(200).json({
             status: "success",
             token
