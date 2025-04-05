@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express"
-import { query, body, validationResult } from "express-validator"
+import { body, validationResult } from "express-validator"
 
 const handleValidationErrors = async (req: Request, res: Response, next: NextFunction
 ) => {
@@ -11,7 +11,7 @@ const handleValidationErrors = async (req: Request, res: Response, next: NextFun
     next()
 }
 
-export const valideSignUp = [
+export const validateSignUp = [
     body("userName").isString().notEmpty().withMessage("請輸入使用者名稱"),
     body("email").isString().isEmail().withMessage("請輸入電子郵件"),
     body("password").isString().notEmpty().withMessage("請輸入密碼"),
@@ -28,18 +28,18 @@ export const valideSignUp = [
     handleValidationErrors
 ]
 
-export const valideLogin = [
+export const validateLogin = [
     body("email").isString().isEmail().withMessage("請輸入電子郵件"),
     body("password").isString().notEmpty().withMessage("請輸入密碼"),
     handleValidationErrors
 ]
 
-export const valideEmail = [
+export const validateEmail = [
     body("email").isString().isEmail().withMessage("請輸入電子郵件"),
     handleValidationErrors
 ]
 
-export const valideResetPassword = [
+export const validateResetPassword = [
     body("newPassword").isString().notEmpty().withMessage("請輸入密碼"),
     body("confirmPassword")
         .isString()

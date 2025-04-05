@@ -1,5 +1,4 @@
 import express, { Request, Response } from "express"
-// import { PrismaClient as LocalDB } from '../generated/local'
 import { PrismaClient as RemoteDB } from '../generated/remote'
 import "dotenv/config"
 import cors from "cors"
@@ -8,6 +7,8 @@ import foodRoutes from "./routes/foodRoutes"
 import globalErrorHandler from "./controllers/errorController"
 import authRoutes from "./routes/authRoutes"
 import cookieParser from "cookie-parser"
+import userRoutes from "./routes/userRoutes"
+import { v2 as cloudinary } from "cloudinary"
 
 
 mongoose.connect(process.env.MONGODB_CONNECTION_STRING as string)
@@ -18,14 +19,21 @@ const prisma = new RemoteDB();
 const testDB = async () => {
     try {
         await prisma.$connect();
-        console.log("Prisma 成功連接到 PostgreSQL");
+        console.log("Prisma 成功連接到 PostgreSQL")
     } catch (error) {
-        console.error("Prisma 連接失敗", error);
+        console.error("Prisma 連接失敗", error)
     } finally {
-        await prisma.$disconnect();
+        await prisma.$disconnect()
     }
 }
 testDB()
+
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+})
+
 
 
 const app = express()
@@ -44,6 +52,7 @@ app.get("/health", async (req: Request, res: Response) => {
 
 app.use("/api/menu", foodRoutes)
 app.use("/api/auth", authRoutes)
+app.use("/api/user", userRoutes)
 
 app.use(globalErrorHandler)
 

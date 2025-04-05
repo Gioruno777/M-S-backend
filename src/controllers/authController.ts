@@ -1,11 +1,12 @@
 import { PrismaClient as RemoteDB, Prisma } from '../../generated/remote'
 import catchAsync from "../utils/catchAsync"
 import AppError from "../utils/appError"
-import { NextFunction, Request, Response } from "express"
+import { Request, Response, NextFunction } from "express"
 import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
 import * as crypto from 'crypto'
 import sendEmail from '../utils/email'
+
 const FRONTEND_URL = process.env.FRONTEND_URL
 const isProduction = process.env.IS_PRODUCTION === "true"
 
