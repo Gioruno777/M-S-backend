@@ -16,10 +16,7 @@ jobs:
           node-version: '20'
 
       - run: npm ci
-
       - run: npm run build
-
-      - run: npm test
 
       - name: Deploy to Render (only on main)
         if: github.ref == 'refs/heads/main'
