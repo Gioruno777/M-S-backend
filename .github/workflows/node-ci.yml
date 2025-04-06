@@ -1,0 +1,27 @@
+name: Node.js CI
+
+on:
+  push:
+    branches: [main,develop]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - run: npm test
+
+      - name: Deploy to Render
+        run: curl "$RENDER_DEPLOY_HOOK"
+        env:
+          RENDER_DEPLOY_HOOK: ${{ https://api.render.com/deploy/srv-cvmf91ngi27c73asuu4g?key=YfXx4-d0HhU }}
