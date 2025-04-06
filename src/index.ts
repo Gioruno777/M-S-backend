@@ -9,6 +9,7 @@ import authRoutes from "./routes/authRoutes"
 import cookieParser from "cookie-parser"
 import userRoutes from "./routes/userRoutes"
 import { v2 as cloudinary } from "cloudinary"
+import orderRoutes from "./routes/orderRoutes"
 
 
 mongoose.connect(process.env.MONGODB_CONNECTION_STRING as string)
@@ -44,6 +45,7 @@ app.use(cors({
 }
 ))
 app.use(cookieParser())
+app.use("/api/order/webhook", express.raw({ type: "*/*" }))
 app.use(express.json())
 
 app.get("/health", async (req: Request, res: Response) => {
@@ -53,6 +55,7 @@ app.get("/health", async (req: Request, res: Response) => {
 app.use("/api/menu", foodRoutes)
 app.use("/api/auth", authRoutes)
 app.use("/api/user", userRoutes)
+app.use("/api/order", orderRoutes)
 
 app.use(globalErrorHandler)
 
