@@ -15,4 +15,16 @@ router
     .get(auth.validateToken, userController.getUserInfo)
     .patch(upload.single("photo"), validateUpdateUserInfo, auth.validateToken, userController.updateUserinfo)
 
+router
+    .route("/purchase")
+    .get(auth.validateToken, userController.getPurchases)
+
+router
+    .route("/purchase/:purchaseId")
+    .get(auth.validateToken, userController.getPurchaseDetail)
+
+router
+    .route("/transaction")
+    .get(auth.validateToken, userController.getMemberTransactions)
+
 export default router

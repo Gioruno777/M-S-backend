@@ -246,7 +246,7 @@ const checkOut = catchAsync(
                             type: "PURCHASE",
                             method: "MEMBER_CARD",
                             status: "SUCCESS",
-                            record: `消費 ${amount} 元`,
+                            record: `會員卡消費 ${amount} 元`,
                             note: note,
                             items: {
                                 create: cart.items.map((item) => ({
@@ -278,7 +278,7 @@ const checkOut = catchAsync(
                             price_data: {
                                 currency: "TWD",
                                 product_data: {
-                                    name: `消費 $${amount_stripeType / 100}`,
+                                    name: `商品消費 $${amount_stripeType / 100}`,
                                 },
                                 unit_amount: amount_stripeType
                             },

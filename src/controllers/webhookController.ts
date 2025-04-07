@@ -136,7 +136,7 @@ const handlePurchase = async (session: Stripe.Checkout.Session) => {
                 type: "PURCHASE",
                 method: "STRIPE",
                 status: "SUCCESS",
-                record: `消費 ${amount} 元`,
+                record: `信用卡消費 ${amount} 元`,
                 note: note,
                 items: {
                     create: cart.items.map((item) => ({

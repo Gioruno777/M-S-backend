@@ -3,6 +3,7 @@ import catchAsync from "../utils/catchAsync"
 import AppError from "../utils/appError"
 import { Request, Response, NextFunction } from "express"
 import bcrypt from "bcryptjs"
+import { DateTime } from "luxon"
 import { uploadImage } from '../utils/upLoadImage'
 
 const prisma = new RemoteDB()
@@ -104,8 +105,135 @@ const updateUserinfo = catchAsync(
     }
 )
 
+const getPurchases = catchAsync(
+    async (req: Request, res: Response, next: NextFunction) => {
+        const userId = req.userId
+
+        const transactions = await prisma.transaction.findMany({
+            where: {
+                userId: userId,
+                type: "PURCHASE"
+            },
+            orderBy: {
+                createdAt: 'desc'
+            },
+            select: {
+                id: true,
+                createdAt: true,
+                method: true,
+                amount: true
+            }
+        })
+
+        if (!transactions) {
+            throw new AppError("查無此用戶", 404)
+        }
+
+        const data = transactions.map(transaction => ({
+            ...transaction,
+            purchaseId: transaction.id.slice(0, 6),
+            createdAt: DateTime
+                .fromJSDate(transaction.createdAt, { zone: 'utc' })
+                .setZone('Asia/Shanghai')
+                .toFormat('yyyy-MM-dd HH:mm:ss')
+        }))
+
+
+        res.status(200).json({
+            status: "success",
+            data: {
+                purchases: data
+            }
+        })
+    }
+)
+
+const getMemberTransactions = catchAsync(
+    async (req: Request, res: Response, next: NextFunction) => {
+        const userId = req.userId
+
+        const transactions = await prisma.transaction.findMany({
+            where: {
+                userId: userId,
+                NOT: {
+                    type: "PURCHASE",
+                    method: "STRIPE"
+                }
+            },
+            orderBy: {
+                createdAt: 'desc'
+            },
+            select: {
+                id: true,
+                createdAt: true,
+                type: true,
+                amount: true,
+                previousBalance: true,
+                record: true
+            }
+        })
+
+        if (!transactions) {
+            throw new AppError("查無此用戶", 404)
+        }
+
+        const data = transactions.map(transaction => ({
+            ...transaction,
+            transactionId: transaction.id.slice(0, 6),
+            createdAt: DateTime
+                .fromJSDate(transaction.createdAt, { zone: 'utc' })
+                .setZone('Asia/Shanghai')
+                .toFormat('yyyy-MM-dd HH:mm:ss')
+        }))
+
+        res.status(200).json({
+            status: "success",
+            data: {
+                transactions: data
+            }
+        })
+    }
+)
+
+const getPurchaseDetail = catchAsync(
+    async (req: Request, res: Response, next: NextFunction) => {
+        const transactionId = req.params.purchaseId
+        const userId = req.userId
+
+        const transaction = await prisma.transaction.findFirst({
+            where: {
+                id: transactionId,
+                userId: userId
+            },
+            select: {
+                id: true,
+                amount: true,
+                note: true,
+                createdAt: true,
+                items: true,
+                method: true
+            }
+        })
+
+        if (!transaction) {
+            throw new AppError("無此交易", 404)
+        }
+
+
+        res.status(200).json({
+            status: "success",
+            data: {
+                purchase: transaction
+            }
+        })
+    }
+)
+
 export default {
     getUserInfo,
     updatePassword,
-    updateUserinfo
+    updateUserinfo,
+    getPurchases,
+    getMemberTransactions,
+    getPurchaseDetail
 }
