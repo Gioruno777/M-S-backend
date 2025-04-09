@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express"
 import AppError from "../utils/appError"
 import catchAsync from "../utils/catchAsync"
-import { CartItem, PrismaClient as RemoteDB } from '../../generated/remote'
+import { PrismaClient as RemoteDB } from '../../generated/remote'
 import Stripe from "stripe"
 import Food from "../models/foodModel"
 
@@ -15,6 +15,27 @@ const topUP = catchAsync(
         const { amount } = req.body
         const userId = req.userId
 
+        const user = await prisma.user.findUnique({
+            where: { id: userId }
+        })
+
+        if (!user) {
+            throw new AppError('用戶不存在', 404)
+        }
+
+        const previousBalance = user.balance
+        const transaction = await prisma.transaction.create({
+            data: {
+                userId,
+                amount: amount,
+                previousBalance: previousBalance,
+                type: "TOP_UP",
+                method: "STRIPE",
+                status: "PENDING",
+                record: `會員卡儲值 ${amount} 元`,
+            }
+        })
+
         const session = await STRIPE.checkout.sessions.create({
             payment_method_types: ["card"],
             line_items: [
@@ -22,24 +43,35 @@ const topUP = catchAsync(
                     price_data: {
                         currency: "TWD",
                         product_data: {
-                            name: `會員卡儲值 $${amount / 100}`,
+                            name: `會員卡儲值 $${amount}`,
                         },
-                        unit_amount: amount,
+                        unit_amount: amount * 100,
                     },
                     quantity: 1,
                 },
             ],
             mode: "payment",
-            success_url: `${FRONTEND_URL}/member/main?topup_success=true`,
+            expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
+            success_url: `${FRONTEND_URL}/member/transaction/${transaction.id}?topup_success=true`,
             cancel_url: `${FRONTEND_URL}/member/main?topup_cancelled=true`,
             metadata: {
-                type: "TOP_UP",
-                userId: userId
+                type: "TopUp",
+                userId: userId,
+                transactionId: transaction.id
             },
         })
+        await prisma.transaction.update({
+            where: { id: transaction.id },
+            data: {
+                sessionId: session.id,
+                sessionUrl: session.url
+            }
+        })
+
         res.status(200).json({
             status: "success",
             url: session.url
+
         })
     }
 )
@@ -232,15 +264,15 @@ const checkOut = catchAsync(
                 }
                 const previousBalance = user.balance
 
-                await prisma.$transaction([
+                const [, transaction] = await prisma.$transaction([
                     prisma.user.update({
-                        where: { id: req.userId },
+                        where: { id: userId },
                         data: { balance: { decrement: amount } },
                     }),
 
                     prisma.transaction.create({
                         data: {
-                            userId: req.userId,
+                            userId: userId,
                             amount: amount,
                             previousBalance: previousBalance,
                             type: "PURCHASE",
@@ -248,6 +280,7 @@ const checkOut = catchAsync(
                             status: "SUCCESS",
                             record: `會員卡消費 ${amount} 元`,
                             note: note,
+                            paidAt: new Date(),
                             items: {
                                 create: cart.items.map((item) => ({
                                     productId: item.productId,
@@ -258,6 +291,9 @@ const checkOut = catchAsync(
                                 }))
                             }
                         },
+                        select: {
+                            id: true
+                        }
                     }),
 
                     prisma.cartItem.deleteMany({
@@ -265,12 +301,43 @@ const checkOut = catchAsync(
                     })
                 ])
                 res.status(200).json({
-                    status: "success"
+                    status: "success",
+                    transaction: transaction.id
                 })
             },
 
             STRIPE: async () => {
-                const amount_stripeType = amount * 100
+                const stripeAmount = amount * 100
+
+                const purchase = await prisma.transaction.create({
+                    data: {
+                        userId: userId,
+                        amount: amount,
+                        type: "PURCHASE",
+                        method: "STRIPE",
+                        status: "PENDING",
+                        record: `信用卡消費 ${amount} 元`,
+                        note: note,
+                        items: {
+                            create: cart.items.map((item) => ({
+                                productId: item.productId,
+                                name: item.name,
+                                imageUrl: item.imageUrl,
+                                quantity: item.quantity,
+                                price: item.price
+                            }))
+                        }
+                    },
+                    include: {
+                        items: true
+                    }
+                })
+
+
+                const description = purchase.items
+                    .map(item => `${item.name}x${item.quantity} `)
+                    .join('\n')
+
                 const session = await STRIPE.checkout.sessions.create({
                     payment_method_types: ["card"],
                     line_items: [
@@ -278,23 +345,34 @@ const checkOut = catchAsync(
                             price_data: {
                                 currency: "TWD",
                                 product_data: {
-                                    name: `商品消費 $${amount_stripeType / 100}`,
+                                    name: `商品消費 $${amount}`,
+                                    description: description
                                 },
-                                unit_amount: amount_stripeType
+                                unit_amount: stripeAmount
                             },
                             quantity: 1,
                         },
                     ],
                     mode: "payment",
-                    success_url: `${FRONTEND_URL}/cart/checkout?order_success=true`,
+                    expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
+                    success_url: `${FRONTEND_URL}/member/purchase/${purchase.id}?order_success=true`,
                     cancel_url: `${FRONTEND_URL}/cart/checkout?order_cancelled=true`,
                     metadata: {
-                        type: "PURCHASE",
+                        type: "Purchase",
                         userId: userId,
                         cartId: cart.id,
-                        note: note
+                        purchaseId: purchase.id,
                     },
                 })
+
+                await prisma.transaction.update({
+                    where: { id: purchase.id },
+                    data: {
+                        sessionId: session.id,
+                        sessionUrl: session.url
+                    }
+                })
+
                 res.status(200).json({
                     status: "success",
                     url: session.url
@@ -311,6 +389,35 @@ const checkOut = catchAsync(
     }
 )
 
+const getLatestNote = catchAsync(
+    async (req: Request, res: Response, next: NextFunction) => {
+        const userId = req.userId
+
+        const transaction = await prisma.transaction.findFirst({
+            where: {
+                userId: userId,
+            },
+            orderBy: { createdAt: "desc" },
+            select: {
+                status: true,
+                note: true
+            }
+        })
+
+        if (!transaction) {
+            throw new AppError("找不到備註", 400)
+        }
+
+        const note = transaction.status === "PENDING" ? transaction.note : ""
+
+        res.status(200).json({
+            status: "success",
+            data: {
+                note: note
+            }
+        })
+    }
+)
 
 export default {
     topUP,
@@ -318,5 +425,6 @@ export default {
     getCartItem,
     updateCartItem,
     deleteCartItem,
-    checkOut
+    checkOut,
+    getLatestNote
 }

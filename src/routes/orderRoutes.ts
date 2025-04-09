@@ -16,6 +16,10 @@ router
     .delete(validateDeleteCartItem, auth.validateToken, orderController.deleteCartItem)
 
 router
+    .route("/latestnote")
+    .get(auth.validateToken, orderController.getLatestNote)
+
+router
     .route("/topup")
     .post(validateTopUp, auth.validateToken, orderController.topUP)
 

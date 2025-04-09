@@ -5,6 +5,7 @@ import { Request, Response, NextFunction } from "express"
 import bcrypt from "bcryptjs"
 import { DateTime } from "luxon"
 import { uploadImage } from '../utils/upLoadImage'
+import { subMinutes } from "date-fns"
 
 const prisma = new RemoteDB()
 
@@ -112,7 +113,8 @@ const getPurchases = catchAsync(
         const transactions = await prisma.transaction.findMany({
             where: {
                 userId: userId,
-                type: "PURCHASE"
+                type: "PURCHASE",
+                status: "SUCCESS"
             },
             orderBy: {
                 createdAt: 'desc'
@@ -148,16 +150,30 @@ const getPurchases = catchAsync(
     }
 )
 
-const getMemberTransactions = catchAsync(
+const getTransactions = catchAsync(
     async (req: Request, res: Response, next: NextFunction) => {
         const userId = req.userId
+
+        const THIRTY_MINUTES_AGO = subMinutes(new Date(), 30)
+        await prisma.transaction.updateMany({
+            where: {
+                userId: userId,
+                status: "PENDING",
+                createdAt: { lt: THIRTY_MINUTES_AGO }
+            },
+            data: {
+                status: "FAILED"
+            }
+        })
 
         const transactions = await prisma.transaction.findMany({
             where: {
                 userId: userId,
                 NOT: {
-                    type: "PURCHASE",
-                    method: "STRIPE"
+                    AND: [
+                        { type: "PURCHASE" },
+                        { method: "STRIPE" }
+                    ],
                 }
             },
             orderBy: {
@@ -168,7 +184,7 @@ const getMemberTransactions = catchAsync(
                 createdAt: true,
                 type: true,
                 amount: true,
-                previousBalance: true,
+                status: true,
                 record: true
             }
         })
@@ -183,7 +199,7 @@ const getMemberTransactions = catchAsync(
             createdAt: DateTime
                 .fromJSDate(transaction.createdAt, { zone: 'utc' })
                 .setZone('Asia/Shanghai')
-                .toFormat('yyyy-MM-dd HH:mm:ss')
+                .toFormat('yyyy-MM-dd HH:mm:ss'),
         }))
 
         res.status(200).json({
@@ -203,7 +219,9 @@ const getPurchaseDetail = catchAsync(
         const transaction = await prisma.transaction.findFirst({
             where: {
                 id: transactionId,
-                userId: userId
+                userId: userId,
+                type: "PURCHASE",
+                status: "SUCCESS"
             },
             select: {
                 id: true,
@@ -211,7 +229,8 @@ const getPurchaseDetail = catchAsync(
                 note: true,
                 createdAt: true,
                 items: true,
-                method: true
+                method: true,
+                paidAt: true
             }
         })
 
@@ -219,11 +238,83 @@ const getPurchaseDetail = catchAsync(
             throw new AppError("無此交易", 404)
         }
 
+        const data = {
+            ...transaction,
+            purchaseId: transaction.id.slice(0, 6),
+            createdAt: DateTime
+                .fromJSDate(transaction.createdAt, { zone: 'utc' })
+                .setZone('Asia/Shanghai')
+                .toFormat('yyyy-MM-dd HH:mm:ss'),
+            paidAt: transaction.paidAt ?
+                DateTime
+                    .fromJSDate(transaction.paidAt, { zone: 'utc' })
+                    .setZone('Asia/Shanghai')
+                    .toFormat('yyyy-MM-dd HH:mm:ss')
+                : null
+        }
 
         res.status(200).json({
             status: "success",
             data: {
-                purchase: transaction
+                purchase: data
+            }
+        })
+    }
+)
+
+const getTransactionDetail = catchAsync(
+    async (req: Request, res: Response, next: NextFunction) => {
+        const transactionId = req.params.transactionId
+        const userId = req.userId
+
+        const transaction = await prisma.transaction.findFirst({
+            where: {
+                id: transactionId,
+                userId: userId,
+                NOT: {
+                    AND: [
+                        { type: "PURCHASE" },
+                        { method: "STRIPE" }
+                    ],
+                }
+            },
+            select: {
+                id: true,
+                type: true,
+                method: true,
+                record: true,
+                status: true,
+                amount: true,
+                previousBalance: true,
+                createdAt: true,
+                paidAt: true,
+                sessionUrl: true
+            }
+        })
+
+        if (!transaction) {
+            throw new AppError("無此交易", 404)
+        }
+
+        const data = {
+            ...transaction,
+            transactionId: transaction.id.slice(0, 6),
+            createdAt: DateTime
+                .fromJSDate(transaction.createdAt, { zone: 'utc' })
+                .setZone('Asia/Shanghai')
+                .toFormat('yyyy-MM-dd HH:mm:ss'),
+            paidAt: transaction.paidAt ?
+                DateTime
+                    .fromJSDate(transaction.paidAt, { zone: 'utc' })
+                    .setZone('Asia/Shanghai')
+                    .toFormat('yyyy-MM-dd HH:mm:ss')
+                : null
+        }
+
+        res.status(200).json({
+            status: "success",
+            data: {
+                transaction: data
             }
         })
     }
@@ -234,6 +325,7 @@ export default {
     updatePassword,
     updateUserinfo,
     getPurchases,
-    getMemberTransactions,
-    getPurchaseDetail
+    getTransactions,
+    getPurchaseDetail,
+    getTransactionDetail
 }

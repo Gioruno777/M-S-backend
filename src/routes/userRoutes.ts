@@ -16,15 +16,19 @@ router
     .patch(upload.single("photo"), validateUpdateUserInfo, auth.validateToken, userController.updateUserinfo)
 
 router
-    .route("/purchase")
+    .route("/purchases")
     .get(auth.validateToken, userController.getPurchases)
 
 router
-    .route("/purchase/:purchaseId")
+    .route("/purchases/:purchaseId")
     .get(auth.validateToken, userController.getPurchaseDetail)
 
 router
-    .route("/transaction")
-    .get(auth.validateToken, userController.getMemberTransactions)
+    .route("/transactions")
+    .get(auth.validateToken, userController.getTransactions)
+
+router
+    .route("/transactions/:transactionId")
+    .get(auth.validateToken, userController.getTransactionDetail)
 
 export default router

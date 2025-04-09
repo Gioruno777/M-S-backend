@@ -1,3 +1,4 @@
+import { error } from 'console'
 import { PrismaClient as RemoteDB } from '../../generated/remote'
 import AppError from "../utils/appError"
 import catchAsync from "../utils/catchAsync"
@@ -31,132 +32,126 @@ const handleWebhook = catchAsync(
         const session = event.data.object as Stripe.Checkout.Session
         const type = session.metadata?.type
 
+        if (!type) {
+            return res.status(400).send("Webhook不支援")
+        }
+
         const handlers: Record<string, (s: Stripe.Checkout.Session) => Promise<void>> = {
-            TOP_UP: handleTopUp,
-            PURCHASE: handlePurchase
+            TopUp: async () => {
+                const amount = (session.amount_total || 0) / 100
+                const userId = session.metadata?.userId
+                const transactionId = session.metadata?.transactionId
+
+                if (!userId || !transactionId) {
+                    throw new AppError("Id不存在", 400)
+                }
+
+                const [user, transaction] = await Promise.all([
+                    prisma.user.findUnique({
+                        where: { id: userId }
+                    }),
+                    prisma.transaction.findUnique({
+                        where: {
+                            id: transactionId
+                        }
+                    })
+                ])
+
+                if (!user) {
+                    throw new AppError('用戶不存在', 404)
+                }
+
+                if (!transaction) {
+                    throw new AppError('交易不存在', 404)
+                }
+
+                await prisma.$transaction([
+                    prisma.user.update({
+                        where: { id: userId },
+                        data: { balance: { increment: amount } },
+                    }),
+                    prisma.transaction.update({
+                        where: { id: transactionId },
+                        data: {
+                            status: "SUCCESS",
+                            paidAt: new Date(),
+                        }
+                    }),
+
+                ])
+
+                res.status(200).json({
+                    status: "success",
+                    received: true
+                })
+            },
+
+            Purchase: async () => {
+                const amount = (session.amount_total || 0) / 100
+                const userId = session.metadata?.userId
+                const cartId = session.metadata?.cartId
+                const purchaseId = session.metadata?.purchaseId
+
+                if (!userId || !cartId || !purchaseId) {
+                    throw new AppError("無此交易", 400)
+                }
+
+                const [user, cart, purchase] = await Promise.all([
+                    prisma.user.findUnique({ where: { id: userId } }),
+                    prisma.cart.findUnique({
+                        where: { userId: userId },
+                        include: {
+                            items: {
+                                orderBy: { name: "desc" }
+                            }
+                        }
+                    }),
+
+                    prisma.transaction.findUnique({
+                        where: {
+                            id: purchaseId,
+                        }
+                    })
+                ])
+
+                if (!user) {
+                    throw new AppError("無此用戶", 404)
+                }
+                if (!cart) {
+                    throw new AppError("購物車出問題", 404)
+                }
+                if (!purchase) {
+                    throw new AppError('交易不存在', 404)
+                }
+
+                await prisma.$transaction([
+
+                    prisma.transaction.update({
+                        where: {
+                            id: purchaseId
+                        },
+                        data: {
+                            status: "SUCCESS",
+                            paidAt: new Date()
+                        }
+                    }),
+                    prisma.cartItem.deleteMany({
+                        where: { cartId: cartId }
+                    })
+                ])
+
+                res.status(200).json({
+                    status: "success",
+                    received: true
+                })
+            }
         }
-
-        const handler = handlers[type || ""]
-
-        if (!handler) {
-            console.warn(`目前不支援${type}`)
-            return res.status(200).json({
-                status: "ignored",
-                message: `目前不支援${type}`,
-                received: true
-            })
-        }
-
+        const handler = handlers[type]
         await handler(session)
-
-        res.status(200).json({
-            status: "success",
-            received: true
-        })
     }
 )
 
-const handleTopUp = async (session: Stripe.Checkout.Session) => {
-    const amount = (session.amount_total || 0) / 100
-    const userId = session.metadata?.userId
 
-    if (!userId) {
-        throw new AppError("Id不存在", 400)
-    }
-
-    const user = await prisma.user.findUnique({
-        where: { id: userId }
-    })
-
-    if (!user) {
-        console.warn(`[TopUp] 找不到 userId=${userId}, sessionId=${session.id}`)
-        throw new AppError('用戶不存在', 404)
-    }
-
-    const previousBalance = user.balance
-
-    await prisma.$transaction([
-        prisma.user.update({
-            where: { id: userId },
-            data: { balance: { increment: amount } },
-        }),
-
-        prisma.transaction.create({
-            data: {
-                userId: userId,
-                amount: amount,
-                previousBalance: previousBalance,
-                type: "TOP_UP",
-                method: "STRIPE",
-                status: "SUCCESS",
-                record: `會員卡儲值 ${amount} 元`,
-            },
-        }),
-    ])
-}
-
-const handlePurchase = async (session: Stripe.Checkout.Session) => {
-    const amount = (session.amount_total || 0) / 100
-    const userId = session.metadata?.userId
-    const cartId = session.metadata?.cartId
-    const note = session.metadata?.note
-
-    if (!userId) {
-        throw new AppError("缺少 userId", 400)
-    }
-    if (!cartId) {
-        throw new AppError("缺少 cartId", 400)
-    }
-
-    const [user, cart] = await Promise.all([
-        prisma.user.findUnique({ where: { id: userId } }),
-        prisma.cart.findUnique({
-            where: { userId: userId },
-            include: {
-                items: {
-                    orderBy: { name: "desc" }
-                }
-            }
-        })
-    ])
-
-    if (!user) {
-        throw new AppError("無此用戶", 404)
-    }
-    if (!cart) {
-        throw new AppError("購物車出問題", 404)
-    }
-
-    await prisma.$transaction([
-
-        prisma.transaction.create({
-            data: {
-                userId: userId,
-                amount: amount,
-                type: "PURCHASE",
-                method: "STRIPE",
-                status: "SUCCESS",
-                record: `信用卡消費 ${amount} 元`,
-                note: note,
-                items: {
-                    create: cart.items.map((item) => ({
-                        productId: item.productId,
-                        name: item.name,
-                        imageUrl: item.imageUrl,
-                        quantity: item.quantity,
-                        price: item.price
-                    }))
-                }
-            },
-        }),
-
-        prisma.cartItem.deleteMany({
-            where: {
-                cartId: cartId
-            }
-        })
-    ])
-}
 
 export default {
     handleWebhook
