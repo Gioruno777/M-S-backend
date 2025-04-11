@@ -32,11 +32,17 @@
 
 # 3.技術
 **程式語言**：TypeScript
+
 **前端技術**：React、TailwindCSS、shadcn/ui
+
 **後端技術**：Node.js(Express)
+
 **資料庫與ORM**：MongoDB(Mongoose)、PostgreSQL(Prisma)
+
 **開發工具與環境**：Git、VS Code、Docker、WSL
+
 **第三方服務**：Gmail API、Stripe、Cloudinary
+
 **驗證與安全**：JWT、express-validator、Zod
 
 # 4.資料庫
@@ -46,6 +52,7 @@
 本系統的資料類型可分為：
 
 **商品資訊**：本系統採用MongoDB儲存商品資訊，因為NoSQL的結構具高度彈性，能有效應對商品資料的多元屬性。若未來要擴充特定商品的屬性，僅需要在指定商品進行擴充，不會影響資料庫的整體架構，降低維護和修改成本。
+
 **用戶資訊**：本系統採用PostgreSQL儲存用戶資訊，因為SQL具備ACID特性，可確保資料處理的一致性。由於會員服務涉及金流操作，例如儲值會員卡和線上購物，透過SQL可保障交易行為的正確性，避免資料異常導致不必要的消費糾紛。
 
 # 5.系統流程
