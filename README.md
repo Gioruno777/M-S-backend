@@ -1,10 +1,11 @@
 # MØSBurger-Backend
 # 1.簡介
-這是模擬電商平台常見功能的全端專案，包含商品展示、帳戶驗證、會員管理和線上購物。支援信用卡 和會員卡兩種支付方式，並搭配完善的資料流程提供用戶最好的體驗。
+這是模擬電商平台常見功能的全端專案，包含商品展示、帳戶驗證、會員管理和線上購物。支援信用卡和會員卡兩種支付方式，並搭配完善的資料流程提供用戶最好的體驗。
 
 本篇將以介紹後端功能與架構為主
 
 # 2.系統功能
+本系統有四大核心功能：商品展示、帳戶驗證、會員管理、線上購物。
 
 ### 商品展示
 - **展示功能**：顯示各商品的詳細資訊
@@ -30,17 +31,23 @@
 - **結帳功能**：可填寫備註並選擇以會員卡或信用卡付款
 
 # 3.技術
-- **程式語言**：TypeScript
-- **前端技術**：React、TailwindCSS、shadcn/ui
-- **後端技術**：Node.js（Express
-- **資料庫與 ORM**：MongoDB（Mongoose）、PostgreSQL（Prisma）
-- **開發工具與環境**：Git、VS Code、Docker、WSL
-- **第三方服務**：Gmail API、Stripe、Cloudinary
-- **驗證與安全**：JWT、express-validator、Zod
+**程式語言**：TypeScript
+**前端技術**：React、TailwindCSS、shadcn/ui
+**後端技術**：Node.js(Express)
+**資料庫與ORM**：MongoDB(Mongoose)、PostgreSQL(Prisma)
+**開發工具與環境**：Git、VS Code、Docker、WSL
+**第三方服務**：Gmail API、Stripe、Cloudinary
+**驗證與安全**：JWT、express-validator、Zod
 
-# 4.資料庫設計
+# 4.資料庫
 ![ERD 資料庫設計圖](./docs/DataBase.png)
+圖4.1：資料庫設計圖。
 
+本系統的資料類型可分為：
 
+**商品資訊**：本系統採用MongoDB儲存商品資訊，因為NoSQL的結構具高度彈性，能有效應對商品資料的多元屬性。若未來要擴充特定商品的屬性，僅需要在指定商品進行擴充，不會影響資料庫的整體架構，降低維護和修改成本。
+**用戶資訊**：本系統採用PostgreSQL儲存用戶資訊，因為SQL具備ACID特性，可確保資料處理的一致性。由於會員服務涉及金流操作，例如儲值會員卡和線上購物，透過SQL可保障交易行為的正確性，避免資料異常導致不必要的消費糾紛。
+
+# 5.系統流程
 
 
