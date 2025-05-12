@@ -23,6 +23,25 @@ model User {
   transactions         Transaction[]
 }
 
+model Product {
+  id        String     @id
+  stock     Int
+  stockLogs StockLog[]
+  cartItems CartItem[]
+}
+
+model StockLog {
+  id            String    @id @default(uuid())
+  productId     String
+  type          StockType
+  userId        String?
+  transactionId String?
+  quantity      Int
+  completed     Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  product       Product   @relation(fields: [productId], references: [id])
+}
+
 model Cart {
   id        String     @id @default(uuid())
   userId    String     @unique
@@ -33,14 +52,15 @@ model Cart {
 }
 
 model CartItem {
-  id        String @id @default(uuid())
+  id        String  @id @default(uuid())
   cartId    String
   productId String
   quantity  Int
   price     Int
   name      String
   imageUrl  String
-  cart      Cart   @relation(fields: [cartId], references: [id])
+  cart      Cart    @relation(fields: [cartId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
 
   @@unique([cartId, productId], name: "cartId_productId")
 }
@@ -72,6 +92,12 @@ model TransactionItem {
   quantity      Int
   price         Int
   transaction   Transaction @relation(fields: [transactionId], references: [id])
+}
+
+enum StockType {
+  RESTOCK
+  SALE
+  ADJUSTMENT
 }
 
 enum PaymentMethod {

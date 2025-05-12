@@ -25,18 +25,14 @@ const handleWebhook = catchAsync(
             return res.status(400).send("Webhook 驗證失敗")
         }
 
-        if (event.type !== "checkout.session.completed") {
-            throw new AppError("received: true", 400)
-        }
-
         const session = event.data.object as Stripe.Checkout.Session
         const type = session.metadata?.type
-
+        console.log(event.type)
         if (!type) {
             return res.status(400).send("Webhook不支援")
         }
 
-        const handlers: Record<string, (s: Stripe.Checkout.Session) => Promise<void>> = {
+        const completedHandlers: Record<string, (s: Stripe.Checkout.Session) => Promise<void>> = {
             TopUp: async () => {
                 const amount = (session.amount_total || 0) / 100
                 const userId = session.metadata?.userId
@@ -79,15 +75,9 @@ const handleWebhook = catchAsync(
                     }),
 
                 ])
-
-                res.status(200).json({
-                    status: "success",
-                    received: true
-                })
             },
 
             Purchase: async () => {
-                const amount = (session.amount_total || 0) / 100
                 const userId = session.metadata?.userId
                 const cartId = session.metadata?.cartId
                 const purchaseId = session.metadata?.purchaseId
@@ -102,7 +92,10 @@ const handleWebhook = catchAsync(
                         where: { userId: userId },
                         include: {
                             items: {
-                                orderBy: { name: "desc" }
+                                orderBy: { name: "desc" },
+                                include: {
+                                    product: { select: { stock: true } }
+                                }
                             }
                         }
                     }),
@@ -114,18 +107,12 @@ const handleWebhook = catchAsync(
                     })
                 ])
 
-                if (!user) {
-                    throw new AppError("無此用戶", 404)
-                }
-                if (!cart) {
-                    throw new AppError("購物車出問題", 404)
-                }
-                if (!purchase) {
-                    throw new AppError('交易不存在', 404)
-                }
+                if (!user) throw new AppError("無此用戶", 404)
+                if (!cart) throw new AppError("購物車出問題", 404)
+                if (!purchase) throw new AppError('交易不存在', 404)
+
 
                 await prisma.$transaction([
-
                     prisma.transaction.update({
                         where: {
                             id: purchaseId
@@ -135,19 +122,142 @@ const handleWebhook = catchAsync(
                             paidAt: new Date()
                         }
                     }),
+                    prisma.stockLog.updateMany({
+                        where: {
+                            transactionId: purchaseId,
+                            type: "SALE",
+                            completed: false,
+                        },
+                        data: {
+                            completed: true,
+                        }
+                    })
+                    ,
                     prisma.cartItem.deleteMany({
                         where: { cartId: cartId }
                     })
                 ])
-
-                res.status(200).json({
-                    status: "success",
-                    received: true
-                })
             }
         }
-        const handler = handlers[type]
-        await handler(session)
+
+        const expiredHandlers: Record<string, (s: Stripe.Checkout.Session) => Promise<void>> = {
+            TopUp: async () => {
+                const userId = session.metadata?.userId
+                const transactionId = session.metadata?.transactionId
+
+                if (!userId || !transactionId) {
+                    throw new AppError("Id不存在", 400)
+                }
+
+                const transaction = await prisma.transaction.findFirst({
+                    where: {
+                        id: transactionId,
+                        status: "PENDING"
+                    }
+                })
+
+                if (!transaction) {
+                    throw new AppError('交易不存在', 404)
+                }
+
+                await prisma.transaction.update({
+                    where: { id: transactionId },
+                    data: {
+                        status: "FAILED",
+                        sessionId: null,
+                        sessionUrl: null
+                    }
+                })
+
+            },
+            Purchase: async () => {
+                const userId = session.metadata?.userId
+                const cartId = session.metadata?.cartId
+                const purchaseId = session.metadata?.purchaseId
+
+                if (!userId || !cartId || !purchaseId) {
+                    throw new AppError("無此交易", 400)
+                }
+
+                const [user, cart, transaction] = await Promise.all([
+                    prisma.user.findUnique({ where: { id: userId } }),
+                    prisma.cart.findUnique({
+                        where: { userId: userId },
+                        include: {
+                            items: {
+                                orderBy: { name: "desc" },
+                                include: {
+                                    product: { select: { stock: true } }
+                                }
+                            }
+                        }
+                    }),
+                    prisma.transaction.findFirst({
+                        where: {
+                            id: purchaseId,
+                            status: "PENDING"
+                        }
+                    })
+                ])
+
+                if (!user) throw new AppError("無此用戶", 404)
+                if (!cart) throw new AppError("購物車出問題", 404)
+                if (!transaction) throw new AppError("交易不存在或已處理", 404)
+
+                await prisma.$transaction(async (tx) => {
+
+                    for (const item of cart.items) {
+                        await tx.product.update({
+                            where: { id: item.productId },
+                            data: {
+                                stock: { increment: item.quantity }
+                            }
+                        })
+                    }
+
+                    await tx.stockLog.createMany({
+                        data: cart.items.map((item) => ({
+                            productId: item.productId,
+                            transactionId: purchaseId,
+                            userId,
+                            quantity: item.quantity,
+                            type: "ADJUSTMENT",
+                            completed: true
+                        }))
+                    })
+
+                    await tx.transaction.update({
+                        where: { id: purchaseId },
+                        data: {
+                            status: "FAILED",
+                            sessionId: null,
+                            sessionUrl: null
+                        }
+                    })
+                })
+
+            }
+        }
+
+        switch (event.type) {
+            case 'checkout.session.completed': {
+                const handler = completedHandlers[type]
+                await handler(session)
+                break
+            }
+            case 'checkout.session.expired': {
+                const handler = expiredHandlers[type]
+                await handler(session)
+                break
+            }
+            default: {
+                throw new AppError("received: true", 400)
+            }
+        }
+        res.status(200).json({
+            status: "success",
+            received: true
+        })
     }
 )
 

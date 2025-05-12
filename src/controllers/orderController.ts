@@ -239,12 +239,14 @@ const checkOut = catchAsync(
                 where: { userId },
                 include: {
                     items: {
-                        orderBy: { name: "desc" }
+                        orderBy: { name: "desc" },
+                        include: {
+                            product: { select: { stock: true } }
+                        }
                     }
                 }
             })
         ])
-
         if (!user) {
             throw new AppError("無此用戶", 404)
         }
@@ -255,6 +257,17 @@ const checkOut = catchAsync(
         const total = cart.items.reduce((total, item) => total + item.price * item.quantity, 0);
         if (total !== amount) {
             throw new AppError("金額出問題", 400)
+        }
+
+        const outOfStockItems: string[] = []
+        for (const item of cart.items) {
+            if (item.quantity > item.product.stock) {
+                outOfStockItems.push(`${item.name}`)
+            }
+        }
+        if (outOfStockItems.length > 0) {
+            await prisma.cartItem.deleteMany({ where: { cartId: cart.id } })
+            throw new AppError(`下列商品庫存不足，請重新選購：\n${outOfStockItems.join("\n")}`, 400)
         }
 
         const paymentHandlers: Record<string, () => Promise<void>> = {
@@ -296,6 +309,25 @@ const checkOut = catchAsync(
                         }
                     }),
 
+                    ...cart.items.map(item =>
+                        prisma.product.update({
+                            where: { id: item.productId },
+                            data: {
+                                stock: { decrement: item.quantity }
+                            }
+                        })
+                    ),
+
+                    prisma.stockLog.createMany({
+                        data: cart.items.map(item => ({
+                            productId: item.productId,
+                            userId,
+                            quantity: item.quantity,
+                            type: "SALE",
+                            completed: true
+                        }))
+                    }),
+
                     prisma.cartItem.deleteMany({
                         where: { cartId: cart.id }
                     })
@@ -309,30 +341,96 @@ const checkOut = catchAsync(
             STRIPE: async () => {
                 const stripeAmount = amount * 100
 
-                const purchase = await prisma.transaction.create({
-                    data: {
-                        userId: userId,
-                        amount: amount,
+                const existing = await prisma.transaction.findFirst({
+                    where: {
+                        userId,
                         type: "PURCHASE",
-                        method: "STRIPE",
                         status: "PENDING",
-                        record: `信用卡消費 ${amount} 元`,
-                        note: note,
-                        items: {
-                            create: cart.items.map((item) => ({
-                                productId: item.productId,
-                                name: item.name,
-                                imageUrl: item.imageUrl,
-                                quantity: item.quantity,
-                                price: item.price
-                            }))
-                        }
+                        method: "STRIPE"
                     },
                     include: {
                         items: true
                     }
                 })
 
+                if (existing) {
+
+                    await prisma.$transaction(async (tx) => {
+
+                        for (const item of existing.items) {
+                            await tx.product.update({
+                                where: { id: item.productId },
+                                data: {
+                                    stock: { increment: item.quantity }
+                                }
+                            })
+                        }
+
+                        await tx.stockLog.createMany({
+                            data: existing.items.map((item) => ({
+                                productId: item.productId,
+                                transactionId: existing.id,
+                                userId,
+                                quantity: item.quantity,
+                                type: "ADJUSTMENT",
+                                completed: true
+                            }))
+                        })
+
+                        await tx.transaction.update({
+                            where: { id: existing.id },
+                            data: {
+                                status: "FAILED",
+                                sessionId: null,
+                                sessionUrl: null
+                            }
+                        })
+                    })
+                }
+
+                const purchase = await prisma.$transaction(async (tx) => {
+                    for (const item of cart.items) {
+                        await tx.product.update({
+                            where: { id: item.productId },
+                            data: { stock: { decrement: item.quantity } }
+                        })
+                    }
+
+                    const purchase = await tx.transaction.create({
+                        data: {
+                            userId,
+                            amount,
+                            type: "PURCHASE",
+                            method: "STRIPE",
+                            status: "PENDING",
+                            record: `信用卡消費 ${amount} 元`,
+                            note,
+                            items: {
+                                create: cart.items.map((item) => ({
+                                    productId: item.productId,
+                                    name: item.name,
+                                    imageUrl: item.imageUrl,
+                                    quantity: item.quantity,
+                                    price: item.price
+                                }))
+                            }
+                        },
+                        include: { items: true }
+                    })
+
+                    await tx.stockLog.createMany({
+                        data: cart.items.map(item => ({
+                            productId: item.productId,
+                            transactionId: purchase.id,
+                            userId,
+                            quantity: item.quantity,
+                            type: "SALE",
+                            completed: false
+                        }))
+                    })
+
+                    return purchase;
+                })
 
                 const description = purchase.items
                     .map(item => `${item.name}x${item.quantity} `)

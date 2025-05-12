@@ -10,6 +10,7 @@ import cookieParser from "cookie-parser"
 import userRoutes from "./routes/userRoutes"
 import { v2 as cloudinary } from "cloudinary"
 import orderRoutes from "./routes/orderRoutes"
+import stockRoutes from "./routes/stockRoutes"
 
 
 mongoose.connect(process.env.MONGODB_CONNECTION_STRING as string)
@@ -56,6 +57,7 @@ app.use("/api/menu", foodRoutes)
 app.use("/api/auth", authRoutes)
 app.use("/api/user", userRoutes)
 app.use("/api/order", orderRoutes)
+app.use("/api/stock", stockRoutes)
 
 app.use(globalErrorHandler)
 

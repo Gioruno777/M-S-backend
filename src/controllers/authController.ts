@@ -1,11 +1,11 @@
-import { PrismaClient as RemoteDB, Prisma } from '../../generated/remote'
+import { PrismaClient as RemoteDB } from '../../generated/remote'
 import catchAsync from "../utils/catchAsync"
 import AppError from "../utils/appError"
 import { Request, Response, NextFunction } from "express"
 import bcrypt from "bcryptjs"
-import jwt from "jsonwebtoken"
 import * as crypto from 'crypto'
 import sendEmail from '../utils/email'
+import { loginSerive, signUpService } from '../services/authService'
 
 const FRONTEND_URL = process.env.FRONTEND_URL
 const isProduction = process.env.IS_PRODUCTION === "true"
@@ -16,29 +16,7 @@ const signUp = catchAsync(
     async (req: Request, res: Response, next: NextFunction) => {
         const { userName, email, password } = req.body
 
-        const user = await prisma.user.findUnique({
-            where: { email: email }
-        })
-
-        if (user) {
-            throw new AppError("信箱已註冊", 400)
-        }
-
-        const hashedPassword = await bcrypt.hash(password, 10)
-
-        const newUser = await prisma.user.create({
-            data: {
-                userName,
-                email,
-                password: hashedPassword
-            }
-        })
-
-        await prisma.cart.create({
-            data: {
-                userId: newUser.id
-            }
-        })
+        await signUpService(userName, email, password)
 
         res.status(201).json({
             status: "success"
@@ -50,25 +28,7 @@ const login = catchAsync(
     async (req: Request, res: Response, next: NextFunction) => {
         const { email, password } = req.body
 
-        const user = await prisma.user.findUnique({
-            where: { email: email }
-        })
-        if (!user) {
-            throw new AppError("登入失敗", 400)
-        }
-
-        const isMatch = await bcrypt.compare(password, user.password)
-        if (!isMatch) {
-            throw new AppError("登入失敗", 400)
-        }
-
-        const token = jwt.sign(
-            { userId: user.id },
-            process.env.JWT_SECRET_KEY as string,
-            {
-                expiresIn: "1d",
-            }
-        )
+        const token = await loginSerive(email, password)
 
         res.cookie("auth_token", token, {
             httpOnly: true,

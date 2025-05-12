@@ -5,7 +5,6 @@ import { Request, Response, NextFunction } from "express"
 import bcrypt from "bcryptjs"
 import { DateTime } from "luxon"
 import { uploadImage } from '../utils/upLoadImage'
-import { subMinutes } from "date-fns"
 
 const prisma = new RemoteDB()
 
@@ -154,17 +153,17 @@ const getTransactions = catchAsync(
     async (req: Request, res: Response, next: NextFunction) => {
         const userId = req.userId
 
-        const THIRTY_MINUTES_AGO = subMinutes(new Date(), 30)
-        await prisma.transaction.updateMany({
-            where: {
-                userId: userId,
-                status: "PENDING",
-                createdAt: { lt: THIRTY_MINUTES_AGO }
-            },
-            data: {
-                status: "FAILED"
-            }
-        })
+        // const THIRTY_MINUTES_AGO = subMinutes(new Date(), 30)
+        // await prisma.transaction.updateMany({
+        //     where: {
+        //         userId: userId,
+        //         status: "PENDING",
+        //         createdAt: { lt: THIRTY_MINUTES_AGO }
+        //     },
+        //     data: {
+        //         status: "FAILED"
+        //     }
+        // })
 
         const transactions = await prisma.transaction.findMany({
             where: {
